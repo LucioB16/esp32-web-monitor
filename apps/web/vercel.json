@@ -1,0 +1,4 @@
+{
+  "framework": "nuxtjs",
+  "buildCommand": "npm ci && npm run build"
+}

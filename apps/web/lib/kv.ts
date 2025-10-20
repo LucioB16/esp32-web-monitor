@@ -1,3 +1,5 @@
+import { kvDel, kvGet, kvScan, kvSet } from '~/server/utils/kv'
+
 export type SiteMode = 'full' | 'selector' | 'markers' | 'regex'
 
 export interface SiteConfig {
@@ -20,86 +22,37 @@ export interface TelegramSettings {
   updatedAt: number
 }
 
-type KvLike = {
-  get<T>(key: unknown[]): Promise<{ value: T | null }>
-  set(key: unknown[], value: unknown): Promise<void>
-  delete(key: unknown[]): Promise<void>
-  list<T>(options: { prefix: unknown[] }): AsyncIterableIterator<{ key: unknown[]; value: T }>
-}
+const SITE_PREFIX = ['sites'] as const
+const TELEGRAM_KEY = ['config', 'telegram'] as const
 
-const memoryState = {
-  sites: new Map<string, SiteConfig>(),
-  telegram: null as TelegramSettings | null
-}
+type Prefix = readonly (string | number | boolean)[]
 
-const deno = (globalThis as typeof globalThis & { Deno?: { env?: { get: (name: string) => string | undefined }; openKv?: () => Promise<KvLike> } }).Deno
+type KeyParts = (string | number | boolean)[]
 
-const textEnv = (name: string): string => {
+const asMutable = (parts: Prefix): KeyParts => [...parts]
+
+const envText = (name: string): string => {
   if (typeof process !== 'undefined' && process.env && process.env[name]) {
     return process.env[name] as string
-  }
-  if (deno?.env) {
-    try {
-      const value = deno.env.get(name)
-      if (value) {
-        return value
-      }
-    } catch {
-      // Ignorar errores de permisos en Deno Deploy
-    }
   }
   return ''
 }
 
-const shouldUseDenoKv = (): boolean => {
-  if (!deno?.openKv) {
-    return false
-  }
-  const fromEnv = textEnv('USE_DENO_KV').toLowerCase() === 'true'
-  const denoDeployment = Boolean(textEnv('DENO_DEPLOYMENT_ID'))
-  return fromEnv || denoDeployment
-}
-
-const globalAny = globalThis as typeof globalThis & { __esp32KvPromise?: Promise<KvLike> }
-
-const getKv = async (): Promise<KvLike> => {
-  if (!shouldUseDenoKv()) {
-    throw new Error('Deno KV no disponible en este entorno')
-  }
-  if (!globalAny.__esp32KvPromise) {
-    if (!deno?.openKv) {
-      throw new Error('Deno.openKv no expuesto')
-    }
-    globalAny.__esp32KvPromise = deno.openKv()
-  }
-  return globalAny.__esp32KvPromise
-}
-
-const SITE_PREFIX = ['sites'] as const
-const TELEGRAM_KEY = ['config', 'telegram'] as const
-
 export const listSites = async (): Promise<SiteConfig[]> => {
-  if (shouldUseDenoKv()) {
-    const kv = await getKv()
-    const items: SiteConfig[] = []
-    for await (const entry of kv.list<SiteConfig>({ prefix: [...SITE_PREFIX] })) {
-      items.push(entry.value)
-    }
-    return items.sort((a, b) => a.id.localeCompare(b.id))
+  const sites: SiteConfig[] = []
+  for await (const site of kvScan<SiteConfig>(asMutable(SITE_PREFIX))) {
+    sites.push(site)
   }
-  return [...memoryState.sites.values()].sort((a, b) => a.id.localeCompare(b.id))
+  return sites.sort((a, b) => a.id.localeCompare(b.id))
 }
 
 export const getSite = async (id: string): Promise<SiteConfig | null> => {
-  if (shouldUseDenoKv()) {
-    const kv = await getKv()
-    const entry = await kv.get<SiteConfig>([...SITE_PREFIX, id])
-    return entry.value ?? null
-  }
-  return memoryState.sites.get(id) ?? null
+  return kvGet<SiteConfig>([...SITE_PREFIX, id])
 }
 
-export const upsertSite = async (site: Omit<SiteConfig, 'createdAt' | 'updatedAt'> & { createdAt?: number; updatedAt?: number }): Promise<SiteConfig> => {
+export const upsertSite = async (
+  site: Omit<SiteConfig, 'createdAt' | 'updatedAt'> & { createdAt?: number; updatedAt?: number }
+): Promise<SiteConfig> => {
   const now = Date.now()
   const existing = await getSite(site.id)
   const next: SiteConfig = {
@@ -107,56 +60,38 @@ export const upsertSite = async (site: Omit<SiteConfig, 'createdAt' | 'updatedAt
     createdAt: existing?.createdAt ?? now,
     updatedAt: now
   }
-  if (shouldUseDenoKv()) {
-    const kv = await getKv()
-    await kv.set([...SITE_PREFIX, site.id], next)
-  } else {
-    memoryState.sites.set(site.id, next)
-  }
+  await kvSet([...SITE_PREFIX, site.id], next)
   return next
 }
 
 export const deleteSite = async (id: string): Promise<void> => {
-  if (shouldUseDenoKv()) {
-    const kv = await getKv()
-    await kv.delete([...SITE_PREFIX, id])
-  } else {
-    memoryState.sites.delete(id)
-  }
+  await kvDel([...SITE_PREFIX, id])
 }
 
 const defaultTelegram = (): TelegramSettings => ({
-  chatId: textEnv('TELEGRAM_CHAT_ID'),
+  chatId: envText('TELEGRAM_CHAT_ID'),
   updatedAt: Date.now()
 })
 
 export const getTelegramSettings = async (): Promise<TelegramSettings> => {
-  if (shouldUseDenoKv()) {
-    const kv = await getKv()
-    const stored = await kv.get<TelegramSettings>([...TELEGRAM_KEY])
-    if (stored.value) {
-      return stored.value
-    }
-    const initial = defaultTelegram()
-    await kv.set([...TELEGRAM_KEY], initial)
-    return initial
+  const stored = await kvGet<TelegramSettings>(asMutable(TELEGRAM_KEY))
+  if (stored) {
+    return stored
   }
-  if (!memoryState.telegram) {
-    memoryState.telegram = defaultTelegram()
+  const initial = defaultTelegram()
+  if (initial.chatId) {
+    await kvSet(asMutable(TELEGRAM_KEY), initial)
   }
-  return memoryState.telegram
+  return initial
 }
 
-export const saveTelegramSettings = async (settings: TelegramSettings): Promise<TelegramSettings> => {
+export const saveTelegramSettings = async (
+  settings: Pick<TelegramSettings, 'chatId'> & Partial<Pick<TelegramSettings, 'updatedAt'>>
+): Promise<TelegramSettings> => {
   const payload: TelegramSettings = {
-    ...settings,
-    updatedAt: Date.now()
+    chatId: settings.chatId,
+    updatedAt: settings.updatedAt ?? Date.now()
   }
-  if (shouldUseDenoKv()) {
-    const kv = await getKv()
-    await kv.set([...TELEGRAM_KEY], payload)
-  } else {
-    memoryState.telegram = payload
-  }
+  await kvSet(asMutable(TELEGRAM_KEY), payload)
   return payload
 }

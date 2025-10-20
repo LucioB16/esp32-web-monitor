@@ -4,13 +4,7 @@ import { commandSchema, publishCommand, type MqttConfig } from '~/server/utils/m
 
 type CommandInput = z.infer<typeof commandSchema>
 
-type RuntimeConfig = {
-  mqttUrlWss: string
-  deviceId: string
-  deviceSecret: string
-}
-
-const ensureConfig = (config: RuntimeConfig) => {
+const ensureConfig = (config: MqttConfig) => {
   if (!config.mqttUrlWss) {
     throw createError({ statusCode: 500, statusMessage: 'MQTT_URL_WSS no definido' })
   }
@@ -24,7 +18,7 @@ const ensureConfig = (config: RuntimeConfig) => {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
-  const runtimeConfig: RuntimeConfig = {
+  const runtimeConfig: MqttConfig = {
     mqttUrlWss: config.mqttUrlWss,
     deviceId: config.deviceId,
     deviceSecret: config.deviceSecret
@@ -33,7 +27,7 @@ export default defineEventHandler(async (event) => {
 
   const body = (await readBody(event)) as CommandInput
   const parsed = commandSchema.parse(body)
-  const result = await publishCommand(parsed, runtimeConfig as MqttConfig)
+  const result = await publishCommand(parsed, runtimeConfig)
 
   return { ok: true, topic: result.topic, ts: result.command.ts }
 })

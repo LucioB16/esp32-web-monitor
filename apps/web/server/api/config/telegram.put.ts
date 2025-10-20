@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const current = await getTelegramSettings()
   const next = await saveTelegramSettings({
     chatId: parsed.chatId ?? current.chatId,
-    updatedAt: current.updatedAt
+    updatedAt: Date.now()
   })
 
   return {
