@@ -1,0 +1,16 @@
+[
+  {
+    "id": "demo-amazon",
+    "url": "https://example.com/product",
+    "mode": "selector",
+    "selector_css": "#price span.amount",
+    "interval_s": 900
+  },
+  {
+    "id": "demo-blog",
+    "url": "https://example.com/blog",
+    "mode": "regex",
+    "regex": "Actualizado\\s+(\\d{4}-\\d{2}-\\d{2})",
+    "interval_s": 1800
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "type": "UPSERT_SITE",
+  "payload": {
+    "id": "demo",
+    "url": "https://example.com",
+    "interval_s": 900,
+    "mode": "selector",
+    "selector_css": "#price"
+  },
+  "ts": 1730000000,
+  "hmac": "base64-hmac"
+}
