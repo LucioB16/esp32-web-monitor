@@ -9,6 +9,27 @@ const requestSchema = z.object({
 const MAX_BYTES = 400_000
 const TIMEOUT_MS = 8_000
 
+const escapeAttribute = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/'/g, '&#39;')
+
+const sanitizeHtml = (html: string): string =>
+  html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/javascript:/gi, '')
+    .replace(/<base[^>]*>/gi, '')
+
+const buildSrcdoc = (html: string, baseHref: string): string => {
+  const escapedBase = escapeAttribute(baseHref)
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><base href="${escapedBase}" /><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}</style></head><body>${html}</body></html>`
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const parsed = requestSchema.parse(body)
@@ -75,19 +96,16 @@ export default defineEventHandler(async (event) => {
       })()
     : await response.text()
 
-  const sanitized = rawHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/javascript:/gi, '')
-
+  const sanitized = sanitizeHtml(rawHtml)
   const url = new URL(parsed.url)
   const baseHref = `${url.origin}${url.pathname.replace(/[^/]*$/, '')}`
+  const srcdoc = buildSrcdoc(sanitized, baseHref)
 
   return {
     ok: true,
     html: sanitized,
     baseHref,
-    status: response.status
+    status: response.status,
+    srcdoc
   }
 })

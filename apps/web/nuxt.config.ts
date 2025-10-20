@@ -3,7 +3,7 @@ import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
   ssr: true,
   nitro: {
-    preset: 'deno'
+    preset: 'vercel'
   },
   typescript: {
     strict: true,
@@ -18,7 +18,6 @@ export default defineNuxtConfig({
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
     telegramChatId: process.env.TELEGRAM_CHAT_ID ?? '',
     telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? '',
-    useDenoKv: process.env.USE_DENO_KV ?? '',
     public: {
       mqttUrlWss:
         process.env.NUXT_PUBLIC_MQTT_URL_WSS ?? process.env.MQTT_URL_WSS ?? '',
