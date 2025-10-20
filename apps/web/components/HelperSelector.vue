@@ -55,8 +55,9 @@
 </template>
 
 <script setup lang="ts">
-import CssSelectorGenerator from 'css-selector-generator'
+import getCssSelector from 'css-selector-generator'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { CssSelectorGeneratorOptionsInput } from 'css-selector-generator'
 
 type SelectionResult = {
   selector: string
@@ -83,9 +84,18 @@ const lastText = ref('')
 const currentDoc = ref<Document | null>(null)
 let cleanupFns: Array<() => void> = []
 
-const generator = new CssSelectorGenerator({
+const generatorOptions: CssSelectorGeneratorOptionsInput = {
   selectors: ['id', 'class', 'tag', 'nthchild']
-})
+}
+
+const resolveSelector = (element: Element) => getCssSelector(element, generatorOptions)
+
+const toElement = (target: EventTarget | null): Element | null => {
+  if (!target || typeof (target as { nodeType?: unknown }).nodeType !== 'number') {
+    return null
+  }
+  return (target as Node).nodeType === Node.ELEMENT_NODE ? (target as Element) : null
+}
 
 const buttonClass = computed(() => {
   if (!props.html || props.loading) {
@@ -168,9 +178,13 @@ const setupDocument = (doc: Document) => {
     }
     event.preventDefault()
     event.stopPropagation()
-    const target = event.target as Element
+    const target = toElement(event.target)
+    if (!target) {
+      hideHighlight(doc, highlight)
+      return
+    }
     updateHighlight(target)
-    hoveredSelector.value = generator.getSelector(target)
+    hoveredSelector.value = resolveSelector(target)
   }
 
   const handleClick = (event: MouseEvent) => {
@@ -179,8 +193,11 @@ const setupDocument = (doc: Document) => {
     }
     event.preventDefault()
     event.stopPropagation()
-    const target = event.target as Element
-    const selector = generator.getSelector(target)
+    const target = toElement(event.target)
+    if (!target) {
+      return
+    }
+    const selector = resolveSelector(target)
     const text = (target.textContent || '').trim().slice(0, 200)
     emit('update:modelValue', selector)
     emit('select', { selector, text })
