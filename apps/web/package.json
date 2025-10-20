@@ -6,15 +6,19 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
-    "preview": "nuxt preview"
+    "preview": "nuxt preview",
+    "test": "tsx --tsconfig tsconfig.test.json --test server/data/__tests__/sites.test.ts"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.12.1",
     "@pinia/nuxt": "^0.5.0",
     "css-selector-generator": "^3.7.0",
-    "ioredis": "^5.8.1",
+    "@upstash/redis": "^1.28.3",
     "mqtt": "^5.3.5",
     "nuxt": "^3.11.2",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.2"
   }
 }

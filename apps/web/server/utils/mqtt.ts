@@ -1,32 +1,22 @@
 import mqtt, { type IClientOptions, type MqttClient } from 'mqtt'
-import { z } from 'zod'
-import { deriveTopicSuffix, hmacSha256Base64 } from './crypto'
-
-export const commandPayloadSchema = z.object({
-  id: z.string().min(1),
-  url: z.string().url().optional(),
-  interval_s: z.number().int().positive().optional(),
-  mode: z.enum(['full', 'selector', 'markers', 'regex']).optional(),
-  selector_css: z.string().optional(),
-  start_marker: z.string().optional(),
-  end_marker: z.string().optional(),
-  regex: z.string().optional(),
-  headers: z.record(z.string()).optional(),
-  paused: z.boolean().optional()
-})
-
-export const commandSchema = z.object({
-  type: z.enum(['UPSERT_SITE', 'DELETE_SITE', 'PAUSE_SITE', 'RESUME_SITE', 'CHECK_NOW']),
-  payload: commandPayloadSchema,
-  ts: z.number().optional()
-})
-
-export type CommandInput = z.infer<typeof commandSchema>
+import { useRuntimeConfig } from '#imports'
+import type { H3Event } from 'h3'
+import { commandSchema, type CommandInput } from '~/lib/mqtt/commands'
+import { deriveTopicSuffix, hmacSha256Base64 } from '~/lib/crypto/hmac'
 
 export interface MqttConfig {
   mqttUrlWss: string
   deviceId: string
   deviceSecret: string
+}
+
+export const resolveMqttConfig = (event: H3Event): MqttConfig => {
+  const config = useRuntimeConfig(event)
+  return {
+    mqttUrlWss: config.mqttUrlWss,
+    deviceId: config.deviceId,
+    deviceSecret: config.deviceSecret
+  }
 }
 
 const connectClient = (url: string, options: IClientOptions): Promise<MqttClient> => {

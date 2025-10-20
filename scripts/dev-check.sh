@@ -7,6 +7,9 @@ printf 'esp32-web-monitor: verificación de frontend (Nuxt build)\n'
 
 npm --prefix "$root_dir/apps/web" ci --no-progress
 npm --prefix "$root_dir/apps/web" run build >/dev/null
+
+printf '\nEjecutando pruebas unitarias del backend Nuxt...\n'
+npm --prefix "$root_dir/apps/web" run test >/dev/null
 rm -rf "$root_dir/apps/web/node_modules" "$root_dir/apps/web/.nuxt" "$root_dir/apps/web/.output" "$root_dir/apps/web/.vercel"
 
 printf '\nValidando contratos JSON...\n'

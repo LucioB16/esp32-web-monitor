@@ -1,5 +1,5 @@
 import { defineEventHandler } from 'h3'
-import { getTelegramSettings } from '~/lib/kv'
+import { resolveTelegramCredentials } from '~/server/data/config'
 
 const maskToken = (token: string): string => {
   if (!token) {
@@ -12,16 +12,13 @@ const maskToken = (token: string): string => {
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig(event)
-  const settings = await getTelegramSettings()
-  const chatId = settings.chatId || config.telegramChatId || ''
-  const token = config.telegramBotToken || ''
-
+  const credentials = await resolveTelegramCredentials(event)
   return {
-    chatId,
-    tokenMasked: maskToken(token),
-    hasToken: Boolean(token),
-    hasChatId: Boolean(chatId),
-    updatedAt: settings.updatedAt
+    chatId: credentials.chatId ?? '',
+    tokenMasked: maskToken(credentials.token),
+    hasToken: Boolean(credentials.token),
+    hasChatId: Boolean(credentials.chatId),
+    updatedAt: credentials.stored?.updatedAt ?? null,
+    source: credentials.source
   }
 })

@@ -18,5 +18,10 @@
     <footer class="border-t border-slate-800 bg-slate-900/80 px-4 py-6 text-center text-xs text-slate-400">
       Proyecto educativo — usa servicios gratuitos con responsabilidad.
     </footer>
+    <ToastStack />
   </div>
 </template>
+
+<script setup lang="ts">
+import ToastStack from '~/components/ToastStack.vue'
+</script>
