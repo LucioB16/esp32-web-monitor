@@ -11,3 +11,4 @@ apps/firmware/.vscode/
 
 # OS
 .DS_Store
+apps/web/.env.local
