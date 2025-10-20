@@ -1,0 +1,13 @@
+# Node/Nuxt
+node_modules/
+apps/web/.nuxt/
+apps/web/.output/
+apps/web/.cache/
+apps/web/.nitro/
+
+# PlatformIO
+apps/firmware/.pio/
+apps/firmware/.vscode/
+
+# OS
+.DS_Store

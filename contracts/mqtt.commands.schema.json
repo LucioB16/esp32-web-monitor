@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esp32-web-monitor/contracts/mqtt.commands.schema.json",
+  "title": "ESP32 Web Monitor MQTT Commands",
+  "description": "Esquema inicial para comandos enviados al firmware. Será refinado en commits posteriores.",
+  "type": "object"
+}

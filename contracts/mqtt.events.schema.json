@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esp32-web-monitor/contracts/mqtt.events.schema.json",
+  "title": "ESP32 Web Monitor MQTT Events",
+  "description": "Esquema inicial para eventos publicados por el firmware. Será refinado en commits posteriores.",
+  "type": "object"
+}

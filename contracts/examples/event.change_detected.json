@@ -1,0 +1,13 @@
+{
+  "type": "CHANGE_DETECTED",
+  "payload": {
+    "id": "demo",
+    "http": 200,
+    "size": 10240,
+    "hash": "abc123",
+    "changed": true,
+    "excerpt": "$ 123.45",
+    "error": ""
+  },
+  "ts": 1730000001
+}
