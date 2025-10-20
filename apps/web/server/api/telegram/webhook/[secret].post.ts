@@ -1,28 +1,26 @@
-import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
+import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
+import { useRuntimeConfig } from '#imports'
 import { z } from 'zod'
 import {
   deleteSite,
   getSite,
   listSites,
-  saveTelegramSettings,
-  upsertSite,
-  getTelegramSettings
-} from '~/lib/kv'
-import { commandPayloadSchema, publishCommand, type MqttConfig } from '~/server/utils/mqtt'
+  pauseSite,
+  resumeSite,
+  upsertSite
+} from '~/server/data/sites'
+import { resolveTelegramCredentials, saveTelegramConfig } from '~/server/data/config'
+import { publishCommand, resolveMqttConfig } from '~/server/utils/mqtt'
+import { commandPayloadSchema } from '~/lib/mqtt/commands'
+import { buildIdPayload, buildSiteCommandPayload } from '~/server/utils/siteCommands'
+import type { Mode } from '~/lib/schemas/sites'
 
 const telegramUpdateSchema = z.object({
   message: z
     .object({
       message_id: z.number(),
       text: z.string().optional(),
-      chat: z.object({ id: z.union([z.string(), z.number()]) }),
-      from: z
-        .object({
-          username: z.string().optional(),
-          first_name: z.string().optional(),
-          last_name: z.string().optional()
-        })
-        .optional()
+      chat: z.object({ id: z.union([z.string(), z.number()]) })
     })
     .optional()
 })
@@ -45,24 +43,48 @@ const parseOptions = (tokens: string[]) => {
   return options
 }
 
+const parseMode = (value: string | undefined): Mode => {
+  if (!value) {
+    return 'selector'
+  }
+  const lower = value.toLowerCase()
+  if (lower === 'full' || lower === 'selector' || lower === 'markers' || lower === 'regex') {
+    return lower
+  }
+  throw new Error('Modo inválido. Usa full, selector, markers o regex.')
+}
+
 const buildSitePayload = (args: string[]) => {
   if (args.length < 2) {
     throw new Error('Uso: /add <id> <url> [selector="#precio"] [mode=selector] [interval=900]')
   }
   const [id, url, ...rest] = args
   const options = parseOptions(rest)
+  const mode = parseMode(options.mode)
+  const interval = options.interval ? Number.parseInt(options.interval, 10) : 900
   const payload = commandPayloadSchema.parse({
     id,
     url,
-    interval_s: options.interval ? Number.parseInt(options.interval, 10) : undefined,
-    mode: options.mode as any,
+    interval_s: Number.isFinite(interval) ? interval : 900,
+    mode,
     selector_css: options.selector,
     start_marker: options.start,
     end_marker: options.end,
     regex: options.regex,
     paused: options.paused ? options.paused === 'true' : undefined
   })
-  return payload
+  return {
+    id: payload.id,
+    url: payload.url!,
+    interval_s: payload.interval_s ?? 900,
+    mode: (payload.mode ?? mode) as Mode,
+    selector_css: payload.selector_css,
+    start_marker: payload.start_marker,
+    end_marker: payload.end_marker,
+    regex: payload.regex,
+    headers: payload.headers,
+    paused: payload.paused ?? false
+  }
 }
 
 const sendTelegramMessage = async (token: string, chatId: string, text: string) => {
@@ -82,16 +104,13 @@ const sendTelegramMessage = async (token: string, chatId: string, text: string) 
 
 export default defineEventHandler(async (event) => {
   const secret = getRouterParam(event, 'secret')
-  const config = useRuntimeConfig(event)
-  if (!secret || secret !== config.telegramWebhookSecret) {
+  const runtimeConfig = useRuntimeConfig(event)
+  if (!secret || secret !== runtimeConfig.telegramWebhookSecret) {
     throw createError({ statusCode: 401, statusMessage: 'Webhook secreto inválido' })
   }
 
-  const runtimeMqtt: MqttConfig = {
-    mqttUrlWss: config.mqttUrlWss,
-    deviceId: config.deviceId,
-    deviceSecret: config.deviceSecret
-  }
+  const mqttConfig = resolveMqttConfig(event)
+  const credentials = await resolveTelegramCredentials(event)
 
   const update = telegramUpdateSchema.parse(await readBody(event))
   const message = update.message
@@ -100,94 +119,89 @@ export default defineEventHandler(async (event) => {
   }
 
   const chatId = String(message.chat.id)
-  const storedSettings = await getTelegramSettings()
-  const allowedChat = config.telegramChatId || storedSettings.chatId
-  if (allowedChat && chatId !== allowedChat) {
+  if (credentials.chatId && chatId !== credentials.chatId) {
     return { ok: true }
   }
-  const telegramToken = config.telegramBotToken
-  const normalizedCommand = tokenize(message.text.trim())
-  if (normalizedCommand.length === 0) {
-    return { ok: true }
-  }
-
-  const commandToken = normalizedCommand.shift() as string
-  const command = commandToken.replace(/^\//, '').split('@')[0].toLowerCase()
 
   const respond = async (text: string) => {
-    await sendTelegramMessage(telegramToken, chatId, text)
+    await sendTelegramMessage(credentials.token, chatId, text)
   }
+
+  const parts = tokenize(message.text.trim())
+  if (parts.length === 0) {
+    return { ok: true }
+  }
+
+  const commandToken = parts.shift() as string
+  const command = commandToken.replace(/^\//, '').split('@')[0].toLowerCase()
 
   try {
     switch (command) {
       case 'add': {
-        const payload = buildSitePayload(normalizedCommand)
-        const mode = payload.mode ?? 'selector'
-        if (mode === 'selector' && !payload.selector_css) {
+        const payload = buildSitePayload(parts)
+        if (payload.mode === 'selector' && !payload.selector_css) {
           throw new Error('Proporciona selector=".clase" para modo selector')
         }
-        if (mode === 'markers' && (!payload.start_marker || !payload.end_marker)) {
+        if (payload.mode === 'markers' && (!payload.start_marker || !payload.end_marker)) {
           throw new Error('Modo markers requiere start="..." y end="..."')
         }
-        if (mode === 'regex' && !payload.regex) {
+        if (payload.mode === 'regex' && !payload.regex) {
           throw new Error('Modo regex requiere regex="patrón"')
         }
-        if (!payload.url) {
-          throw new Error('URL inválida o ausente')
-        }
-        const commandPayload = {
-          ...payload,
-          mode,
-          interval_s: payload.interval_s ?? 900,
-          headers: payload.headers ?? {},
-          paused: payload.paused ?? false
-        }
-        await upsertSite({
-          ...commandPayload,
-          mode: commandPayload.mode as any,
-          createdAt: Date.now(),
-          updatedAt: Date.now()
+        const site = await upsertSite({
+          id: payload.id,
+          url: payload.url,
+          interval_s: payload.interval_s,
+          mode: payload.mode,
+          selector_css: payload.selector_css,
+          start_marker: payload.start_marker,
+          end_marker: payload.end_marker,
+          regex: payload.regex,
+          headers: payload.headers,
+          paused: payload.paused
         })
-        await publishCommand({ type: 'UPSERT_SITE', payload: commandPayload }, runtimeMqtt)
-        await respond(`Sitio ${commandPayload.id} actualizado y enviado al ESP32.`)
+        await publishCommand(
+          { type: 'UPSERT_SITE', payload: buildSiteCommandPayload(site) },
+          mqttConfig
+        )
+        await respond(`Sitio ${site.id} actualizado y enviado al ESP32.`)
         break
       }
       case 'remove':
       case 'delete': {
-        const [id] = normalizedCommand
+        const [id] = parts
         if (!id) {
           throw new Error('Uso: /remove <id>')
         }
         await deleteSite(id)
-        await publishCommand({ type: 'DELETE_SITE', payload: { id } }, runtimeMqtt)
+        await publishCommand({ type: 'DELETE_SITE', payload: buildIdPayload(id) }, mqttConfig)
         await respond(`Sitio ${id} eliminado.`)
         break
       }
       case 'pause':
       case 'resume': {
-        const [id] = normalizedCommand
+        const [id] = parts
         if (!id) {
           throw new Error(`Uso: /${command} <id>`)
+        }
+        const site = command === 'pause' ? await pauseSite(id) : await resumeSite(id)
+        await publishCommand(
+          { type: command === 'pause' ? 'PAUSE_SITE' : 'RESUME_SITE', payload: buildIdPayload(id) },
+          mqttConfig
+        )
+        await respond(`Sitio ${id} ${command === 'pause' ? 'pausado' : 'reactivado'}.`)
+        break
+      }
+      case 'checknow': {
+        const [id] = parts
+        if (!id) {
+          throw new Error('Uso: /checknow <id>')
         }
         const existing = await getSite(id)
         if (!existing) {
           throw new Error(`Sitio ${id} no encontrado.`)
         }
-        const paused = command === 'pause'
-        await upsertSite({ ...existing, paused })
-        await publishCommand(
-          { type: paused ? 'PAUSE_SITE' : 'RESUME_SITE', payload: { id } },
-          runtimeMqtt
-        )
-        await respond(`Sitio ${id} ${paused ? 'pausado' : 'reactivado'}.`)
-        break
-      }
-      case 'checknow': {
-        const [id] = normalizedCommand
-        if (!id) {
-          throw new Error('Uso: /checknow <id>')
-        }
-        await publishCommand({ type: 'CHECK_NOW', payload: { id } }, runtimeMqtt)
+        await publishCommand({ type: 'CHECK_NOW', payload: buildIdPayload(id) }, mqttConfig)
         await respond(`Se solicitó revisión inmediata de ${id}.`)
         break
       }
@@ -222,8 +236,8 @@ export default defineEventHandler(async (event) => {
     await respond(error instanceof Error ? error.message : 'Error procesando el comando')
   }
 
-  if (!config.telegramChatId && !storedSettings.chatId && chatId) {
-    await saveTelegramSettings({ chatId, updatedAt: Date.now() })
+  if (!credentials.chatId && chatId) {
+    await saveTelegramConfig({ chatId })
   }
 
   return { ok: true }

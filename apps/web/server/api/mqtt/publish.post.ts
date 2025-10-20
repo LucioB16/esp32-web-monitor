@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { z } from 'zod'
-import { commandSchema, publishCommand, type MqttConfig } from '~/server/utils/mqtt'
+import { commandSchema, publishCommand, resolveMqttConfig } from '~/server/utils/mqtt'
 
 type CommandInput = z.infer<typeof commandSchema>
 
@@ -17,12 +17,7 @@ const ensureConfig = (config: MqttConfig) => {
 }
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig(event)
-  const runtimeConfig: MqttConfig = {
-    mqttUrlWss: config.mqttUrlWss,
-    deviceId: config.deviceId,
-    deviceSecret: config.deviceSecret
-  }
+  const runtimeConfig = resolveMqttConfig(event)
   ensureConfig(runtimeConfig)
 
   const body = (await readBody(event)) as CommandInput

@@ -21,6 +21,34 @@ Monitoreo de cambios web extremo a extremo con ESP32, MQTT público, Nuxt 3 desp
 └─ README.md
 ```
 
+## Endpoints principales
+
+### Sitios
+
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| `GET` | `/api/sites` | Lista sitios y estados actuales del dispositivo. |
+| `GET` | `/api/sites/:id` | Detalle de un sitio concreto. |
+| `POST` | `/api/sites` | Crea o actualiza un sitio y publica `UPSERT_SITE` por MQTT. |
+| `POST` | `/api/sites/:id/pause` | Pausa el sitio (estado persistente + comando `PAUSE_SITE`). |
+| `POST` | `/api/sites/:id/resume` | Reanuda el sitio (`RESUME_SITE`). |
+| `POST` | `/api/sites/:id/check` | Solicita verificación inmediata (`CHECK_NOW`). |
+| `DELETE` | `/api/sites/:id` | Elimina el sitio y publica `DELETE_SITE`. |
+
+### MQTT utilitario
+
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| `POST` | `/api/mqtt/publish` | Publica comandos genéricos en `devices/{DEVICE_ID}-*/commands` con HMAC firmado. |
+
+### Configuración y Telegram
+
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| `GET` | `/api/config/telegram` | Recupera chat/token configurados (almacenados en Redis o variables de entorno). |
+| `PUT` | `/api/config/telegram` | Actualiza chat y/o token del bot en Redis. |
+| `POST` | `/api/telegram/webhook/:secret` | Procesa comandos `/add`, `/remove`, `/pause`, `/resume`, `/checknow`, `/list` y `/status`. |
+
 ### Flujo de datos
 1. **UI** permite crear/editar sitios de monitoreo y publica comandos MQTT (`devices/{DEVICE_ID}-{RAND}/commands`) vía WSS.
 2. **ESP32** recibe comandos, valida HMAC (`DEVICE_SECRET`), descarga la página, extrae información y publica eventos (`devices/{DEVICE_ID}-{RAND}/events`).

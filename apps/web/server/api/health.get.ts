@@ -1,5 +1,5 @@
 import { defineEventHandler } from 'h3'
-import { getStorageKind } from '~/server/utils/kv'
+import { getStorageKind } from '~/server/utils/redis'
 
 export default defineEventHandler(() => {
   return {
