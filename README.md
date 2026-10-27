@@ -1,8 +1,29 @@
 # ESP32 Web Monitor
 
-Monitoreo de cambios web extremo a extremo con ESP32, MQTT público, Nuxt 3 desplegado en Vercel (preset serverless/edge) y alertas por Telegram, todo aprovechando planes gratuitos.
+**Detectar cambios en sitios web desde un ESP32 y llevar los eventos a una interfaz web y Telegram.**
 
-## Visión general
+Proyecto IoT en desarrollo que combina firmware [PlatformIO/Arduino](apps/firmware/), una aplicación [Nuxt 3/Nitro](apps/web/), mensajes MQTT y contratos JSON. El repositorio contiene componentes de esa arquitectura; la lista de [próximos pasos](#próximos-pasos) identifica trabajo pendiente, por lo que no debe interpretarse como un servicio completamente desplegado.
+
+## Flujo propuesto
+
+```mermaid
+flowchart TD
+    A["Nuxt: sitios y configuración"] -->|"Comandos MQTT"| B["ESP32"]
+    B -->|"Consulta HTTPS y compara contenido"| C["Sitio monitoreado"]
+    B -->|"Eventos MQTT"| D["API y procesamiento"]
+    D -->|"Notificaciones"| E["Telegram"]
+```
+
+> [!NOTE]
+> El diagrama resume el diseño documentado. Verificá en los módulos y pruebas qué integraciones están operativas antes de desplegarlo para producción.
+
+## Arranque de desarrollo
+1. Clonar el repo y exportar las [variables de entorno](#variables-de-entorno) (`direnv` recomendado).
+2. Ejecutar `./scripts/dev-check.sh` para validar estado.
+3. `apps/web`: `npm install` (o gestor equivalente) y `npm run dev` para iniciar la UI.
+4. `apps/firmware`: abrir con PlatformIO y configurar WiFi vía variables de entorno locales.
+
+## Componentes
 - **Firmware ESP32**: captura HTML de sitios, calcula hashes/recortes y publica eventos vía MQTT TLS.
 - **Backend + UI (Nuxt 3/Nitro)**: administra sitios, sirve helper visual para selectores y expone APIs (incluyendo webhook Telegram) listo para Vercel.
 - **Contratos JSON**: esquemas documentados para comandos y eventos MQTT.
@@ -45,12 +66,6 @@ Todas deben existir tanto en desarrollo como en producción.
 | `WIFI_SSID` / `WIFI_PASS` | **Opcional**: solo definir en entorno local para el firmware (no commitear). |
 
 > Si `REDIS_URL` no está definido, las APIs usarán un almacenamiento en memoria efímero (solo válido para pruebas locales).
-
-## Guía rápida de desarrollo
-1. Clonar el repo y exportar las variables anteriores (`direnv` recomendado).
-2. Ejecutar `./scripts/dev-check.sh` para validar estado.
-3. `apps/web`: `npm install` (o gestor equivalente) y `npm run dev` para iniciar la UI.
-4. `apps/firmware`: abrir con PlatformIO y configurar WiFi vía variables de entorno locales.
 
 ## Despliegue en Vercel
 1. Crear un proyecto en [Vercel](https://vercel.com/) y seleccionar este repositorio.
